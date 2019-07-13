@@ -1,6 +1,7 @@
 
 #include <xc.h>
 #include <stdio.h>
+#include <string.h>
 //#define __delay_ms(x) _delay((unsigned long)((x)*(1000000/4000.0)))
 #pragma config FOSC = INTOSCIO// Oscillator Selection bits (Internal oscillator, port
 //function on RA6, EC used by USB (INTIO))
@@ -19,14 +20,21 @@
 #define clockwise 0 // clockwise direction macro
 #define anti_clockwise 1 // anti clockwise direction macro
 
+#define rs PORTCbits.RC0
+#define rw PORTCbits.RC1
+#define en PORTDbits.RD3
+//LCD Data pins
+#define lcdport PORTA
+
+/*Variable declarations*/
 int singalFlag = 0;
 int directionFlag = 0;
 char a;
-
 char first; // Variable for first instruction
-
 int i=0;
-
+unsigned char unlock[15] = "Unlocking... ";
+unsigned char lock[15] = "Locking... ";
+/*Wifi module function prototype*/
 char Read_Data();// read data from screen
 
 /*
@@ -37,33 +45,47 @@ void system_init (void); // This function will initialise the ports.
 void full_drive (char direction); // This function will drive the motor in full drive mode
 void half_drive (char direction); // This function will drive the motor in full drive mode
 void wave_drive (char direction); // This function will drive the motor in full drive mode
- 
+
+/*LCD related functions*/
+void lcd_ini();
+void lcdcmd(unsigned char);
+void lcddata(unsigned char);
+void MSDelay(unsigned int itime);
+void writeString(unsigned char sendData[]);
 
 void main(void) {
-TRISCbits.TRISC6=1;// TX PIN
-TRISCbits.TRISC7=1;// RX PIN
-// Motors pins//
-TRISDbits.TRISD5=0;
-TRISDbits.TRISD6=0;
-TRISDbits.TRISD7=0;
-TRISCbits.TRISC2=0; //set PWM pins as outputs
-// stop
+//Configure PORTC for RX/TX
+TRISCbits.TRISC6 = 1;// TX PIN
+TRISCbits.TRISC7 = 1;// RX PIN
+//TRISC = 0b11000000;
+//ANSELC =  0b11000000;
+ANSELC =  1;
+        
+// Configure PORTB for motor use
 TRISB=0; //set all pins in port b as outputs
-OSCCON=0x62; // oscillaton config 8MHz
-PORTB=0x0F;
-ANSELC=1;
-
-T2CON=0X01; //Configure timer2 with a prescaler of 4
+PORTB=0x00;
 
 ANSELA = 0x00; // Digital input buffer on PORTA = ON
-TRISA = 0xCF;
+TRISA = 0x00;
+LATA = 0x00;
+PORTA = 0x00;
+TRISD = 0;
+LATD = 0;
+PORTD = 0;
+
+OSCCON=0x62; // oscillaton config 8MHz
+T2CON=0X01; //Configure timer2 with a prescaler of 4
+
 TMR2=0;
 T2CONbits.TMR2ON=1; //Turn on timer2
 // Baudrate and UART config
 RCSTA1=0x90; //reciever config
 SPBRG = 12;// baud rate close to 9600
 //RCSTA1 = 0x90;
+
+lcd_ini();
 __delay_ms(50);
+
 
 while(1) //Infinite loop
 {
@@ -77,7 +99,7 @@ while(1) //Infinite loop
     
     if (singalFlag){
         if (directionFlag){
-            
+            writeString(unlock);
             for(int i=0;i<steps;i++)
             {
                 wave_drive(anti_clockwise);
@@ -87,6 +109,7 @@ while(1) //Infinite loop
             
         }
         else{
+            writeString(lock);
             for(int i=0;i<steps;i++)
             {
                 wave_drive(clockwise);
@@ -218,4 +241,42 @@ void wave_drive (char direction){
         __delay_ms(speed);
     }
     
+}
+// This function writes a string to LCD 1 byte at time
+// Pass variable data to this function)
+void writeString(unsigned char sendData[])
+{
+unsigned int i = 0;
+while(sendData[i]!='\0')
+{
+lcddata(sendData[i]); // Call lcddata function to send characters
+// one by one from "data" array
+i++;
+__delay_ms(20);
+}
+}
+
+void lcd_ini(){
+lcdcmd(0x38); // Configure the LCD in 8-bit mode, 2 line and 5x7 font
+lcdcmd(0x0C); // Display On and Cursor Off
+lcdcmd(0x01); // Clear display screen
+lcdcmd(0x06); // Increment cursor
+lcdcmd(0x80); // Set cursor position to 1st line, 1st column
+}
+
+void lcdcmd(unsigned char cmdout){
+lcdport=cmdout; //Send command to lcdport=PORTB
+rs=0;
+rw=0;
+en=1;
+__delay_ms(10);
+en=0;
+}
+void lcddata(unsigned char dataout){
+lcdport=dataout; //Send data to lcdport=PORTB
+rs=1;
+rw=0;
+en=1;
+__delay_ms(10);
+en=0;
 }
